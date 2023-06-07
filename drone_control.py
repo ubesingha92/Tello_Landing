@@ -29,6 +29,9 @@ forward_backward_velocity = 0
 up_down_velocity = 0
 yaw_velocity = 0
 
+current_altitude = 0
+battery_level = 0
+
 x_integral = 0
 x_last_error = 0
 x_derivative = 0
@@ -154,9 +157,7 @@ def maintain_x_position(current_position_x):
 
     x_last_error = x_error
 
-    plotter.update(current_position_x, None, None)
-
-    return abs(x_error)
+    return x_error
 
 
 def maintain_y_position(current_position_y):
@@ -173,13 +174,11 @@ def maintain_y_position(current_position_y):
 
     y_last_error = y_error
 
-    plotter.update(None, current_position_y, None)
-
-    return abs(y_error)
+    return y_error
 
 
 def maintain_altitude(target_altitude):
-    global h_integral, h_last_error, h_derivative
+    global h_integral, h_last_error, h_derivative, current_altitude
 
     current_altitude = tello.get_distance_tof()
 
@@ -194,9 +193,7 @@ def maintain_altitude(target_altitude):
 
     h_last_error = h_error
 
-    plotter.update(None, None, current_altitude)
-
-    return abs(h_error)
+    return h_error
 
 
 
@@ -279,9 +276,8 @@ def main():
     # listener.start()
 
 
-    global plotter
+    global plotter, battery_level
     plotter = RealTimePlotter(title="Drone Controlling")  # Set the value range in the constructor
-
 
     # tello.set_video_direction(1) # Set the Tello drone's video direction to downward facing
     # frame = tello.get_frame_read().frame
@@ -299,24 +295,21 @@ def main():
             while True:
                 if not handle_low_battery():
                     break
-                # get_video_display_down()
-                # downward_detecter_aruco(ARUCO_ID)
-                # print(tello.get_battery(),"   ", tello.get_distance_tof())
-                # tello.set_video_direction(1) # Set the Tello drone's video direction to downward facing
-                if maintain_altitude(50)<ERROR_THRESHOLD:
+                battery_level = tello.get_battery()
+                h_error = maintain_altitude(50)
+                plotter.update(0, 0, h_error, battery_level)
+                if abs(h_error) < ERROR_THRESHOLD:
                     print("50")
                     break
-                time.sleep(.1)
                     
                 
             while True:
                 if not handle_low_battery():
                     break
-            #     # get_video_display_down()
-            #     # detecter_downward_aruco(ARUCO_ID)
-            #     # print(tello.get_battery(),"   ", tello.get_distance_tof())
-            #     # tello.set_video_direction(1) # Set the Tello drone's video direction to downward facing
-                if maintain_altitude(80)<ERROR_THRESHOLD:
+                battery_level = tello.get_battery()
+                h_error = maintain_altitude(80)
+                plotter.update(0, 0, h_error, battery_level)
+                if abs(h_error) < ERROR_THRESHOLD:
                     print("80")
                     break
                 
@@ -333,6 +326,8 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         tello.end()
+        plotter.finish()  
     except Exception as e:
         print(f"An error occurred: {e}")
         tello.end()
+        plotter.finish()  

@@ -8,6 +8,7 @@ class RealTimePlotter:
         self.h_values = []
         self.timestamps = []
         self.start_time = time.time()
+        self.battery_level = None
 
         plt.ion()  # enable interactive mode
         self.fig, self.ax = plt.subplots(3, 1)  # create a figure and an axis object
@@ -18,7 +19,12 @@ class RealTimePlotter:
         self.ax[1].set_ylabel('Y Error')
         self.ax[2].set_ylabel('H Error')
 
-    def update(self, x_value, y_value, h_value):
+        # initialize battery level text object
+        self.battery_text = self.ax[0].text(0, 1, '', transform=self.ax[0].transAxes)
+
+    def update(self, x_value, y_value, h_value, battery_value):
+        self.battery_level = battery_value
+
         current_time = time.time()
         elapsed_time = current_time - self.start_time
 
@@ -38,12 +44,13 @@ class RealTimePlotter:
         # update the plot
         for ax in self.ax:
             ax.clear()
+        self.battery_text = self.ax[0].text(0.05, 0.95, 'Battery Level: {}%'.format(self.battery_level), transform=self.ax[0].transAxes, verticalalignment='top')
         self.ax[0].plot(self.timestamps, self.x_values)
-        self.ax[0].set_ylim([-300, 300])  # range for x error
+        self.ax[0].set_ylim([-150, 150])  # range for x error
         self.ax[1].plot(self.timestamps, self.y_values)
-        self.ax[1].set_ylim([-300, 300])  # range for y error
+        self.ax[1].set_ylim([-150, 150])  # range for y error
         self.ax[2].plot(self.timestamps, self.h_values)
-        self.ax[2].set_ylim([0, 200])  # range for h error
+        self.ax[2].set_ylim([-50, 50])  # range for h error
 
         plt.pause(0.1)
 
