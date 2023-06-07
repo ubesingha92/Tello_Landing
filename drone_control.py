@@ -17,9 +17,11 @@ LOW_BATTERY_THRESHOLD = 30
 FINDER_MAX_HIGHT = 70
 
 ERROR_THRESHOLD = 2  # cm
-KP = 3 # Proportional gain
-KI = 0.001 # Integral gain
-KD = 1   # Derivative gain
+# PID coefficients for X and Y
+KP_XY, KI_XY, KD_XY = 3, 0.001, 1
+
+# PID coefficients for Altitude
+KP_H, KI_H, KD_H = 3, 0.001, 1
 
 # Initialize global variables
 left_right_velocity = 0
@@ -130,30 +132,64 @@ def on_release(key):
     tello.send_rc_control(left_right_velocity, forward_backward_velocity, up_down_velocity, yaw_velocity)
 
 
+def maintain_x_position(current_position_x):
+    global x_integral, x_last_error, x_derivative
+
+    x_error = - current_position_x
+    x_integral += x_error
+    x_derivative = x_error - x_last_error
+
+    x_adjustment = int(KP_XY * x_error + KI_XY * x_integral + KD_XY * x_derivative)
+    x_adjustment = min(max(x_adjustment, -25), 25)
+
+    tello.send_rc_control(x_adjustment, 0, 0, 0)
+
+    x_last_error = x_error
+
+    plotter.update(current_position_x)
+
+    return abs(x_error)
+
+
+def maintain_y_position(current_position_y):
+    global y_integral, y_last_error, y_derivative
+
+    y_error = - current_position_y
+    y_integral += y_error
+    y_derivative = y_error - y_last_error
+
+    y_adjustment = int(KP_XY * y_error + KI_XY * y_integral + KD_XY * y_derivative)
+    y_adjustment = min(max(y_adjustment, -25), 25)
+
+    tello.send_rc_control(0, y_adjustment, 0, 0)
+
+    y_last_error = y_error
+
+    plotter.update(current_position_y)
+
+    return abs(y_error)
+
+
 def maintain_altitude(target_altitude):
-    global integral_h, last_error_h, derivative_h  # declare global variables
-    try:
-        current_altitude = tello.get_distance_tof()
+    global h_integral, h_last_error, h_derivative
 
-        error_h = target_altitude - current_altitude
-        integral_h += error_h
-        derivative_h = error_h - last_error_h
+    current_altitude = tello.get_distance_tof()
 
-        adjustment = int(KP * error_h + KI * integral_h + KD * derivative_h)
-        adjustment = min(max(adjustment, -25), 25)
+    h_error = target_altitude - current_altitude
+    h_integral += h_error
+    h_derivative = h_error - h_last_error
 
-        tello.send_rc_control(0, 0, adjustment, 0)
+    h_adjustment = int(KP_H * h_error + KI_H * h_integral + KD_H * h_derivative)
+    h_adjustment = min(max(h_adjustment, -25), 25)
 
-        last_error_h = error_h
+    tello.send_rc_control(0, 0, h_adjustment, 0)
 
-        plotter.update(current_altitude)
+    h_last_error = h_error
 
-        return abs(error_h)
+    plotter.update(current_altitude)
 
-    except KeyboardInterrupt:
-        print("Exiting...")
-        tello.end()
-        plotter.finish()
+    return abs(h_error)
+
 
 
 def downward_detecter_aruco(ARUCO_ID):
