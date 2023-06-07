@@ -29,9 +29,17 @@ forward_backward_velocity = 0
 up_down_velocity = 0
 yaw_velocity = 0
 
-integral_h = 0
-last_error_h = 0
-derivative_h = 0
+x_integral = 0
+x_last_error = 0
+x_derivative = 0
+
+y_integral = 0
+y_last_error = 0
+y_derivative = 0
+
+h_integral = 0
+h_last_error = 0
+h_derivative = 0
 
 
 tello = None
@@ -146,7 +154,7 @@ def maintain_x_position(current_position_x):
 
     x_last_error = x_error
 
-    plotter.update(current_position_x)
+    plotter.update(current_position_x, None, None)
 
     return abs(x_error)
 
@@ -165,7 +173,7 @@ def maintain_y_position(current_position_y):
 
     y_last_error = y_error
 
-    plotter.update(current_position_y)
+    plotter.update(None, current_position_y, None)
 
     return abs(y_error)
 
@@ -186,7 +194,7 @@ def maintain_altitude(target_altitude):
 
     h_last_error = h_error
 
-    plotter.update(current_altitude)
+    plotter.update(None, None, current_altitude)
 
     return abs(h_error)
 
@@ -264,21 +272,27 @@ def main():
         print("Failed to initialize drone.")
         return
     
-    tello.turn_motor_on()
+    # tello.turn_motor_on()
+
+
     # listener = Listener(on_press=on_press, on_release=on_release)
     # listener.start()
-    # global plotter
-    # plotter = RealTimePlotter(value_range=(0, 150), title="current altitude")  # Set the value range in the constructor
+
+
+    global plotter
+    plotter = RealTimePlotter(title="Drone Controlling")  # Set the value range in the constructor
+
+
     # tello.set_video_direction(1) # Set the Tello drone's video direction to downward facing
     # frame = tello.get_frame_read().frame
     # cv2.imshow("drone", frame)
 
-    # tello.takeoff()
-    tello.set_video_direction(1)
-    frame = tello.get_frame_read().frame
-    frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
-    cv2.imshow("drone", frame)
-    cv2.waitKey(1)
+    tello.takeoff()
+    # tello.set_video_direction(1)
+    # frame = tello.get_frame_read().frame
+    # frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    # cv2.imshow("drone", frame)
+    # cv2.waitKey(1)
 
     try:
         while True:
@@ -286,24 +300,25 @@ def main():
                 if not handle_low_battery():
                     break
                 # get_video_display_down()
-                downward_detecter_aruco(ARUCO_ID)
+                # downward_detecter_aruco(ARUCO_ID)
                 # print(tello.get_battery(),"   ", tello.get_distance_tof())
                 # tello.set_video_direction(1) # Set the Tello drone's video direction to downward facing
-                # if maintain_altitude(50)<ERROR_THRESHOLD:
-                    # print("50")
-                    # break
+                if maintain_altitude(50)<ERROR_THRESHOLD:
+                    print("50")
+                    break
+                time.sleep(.1)
                     
                 
-            # while True:
-            #     if not handle_low_battery():
-            #         break
+            while True:
+                if not handle_low_battery():
+                    break
             #     # get_video_display_down()
             #     # detecter_downward_aruco(ARUCO_ID)
             #     # print(tello.get_battery(),"   ", tello.get_distance_tof())
             #     # tello.set_video_direction(1) # Set the Tello drone's video direction to downward facing
-            #     if maintain_altitude(80)<ERROR_THRESHOLD:
-            #         # print("80")
-            #         break
+                if maintain_altitude(80)<ERROR_THRESHOLD:
+                    print("80")
+                    break
                 
 
     except KeyboardInterrupt:
