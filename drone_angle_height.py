@@ -15,9 +15,11 @@ try:
         pitch = math.radians(tello.get_pitch())
 
         # Distance height between the drone and the ArUco marker
-        height = tello.get_distance_tof() * math.cos(roll) * math.cos(pitch)
+        height = round(tello.get_distance_tof() * math.cos(roll) * math.cos(pitch))
 
-        print("Height: ", height)
+        print(f"Roll: {round(math.degrees(roll))} Pitch: {round(math.degrees(pitch))}")
+
+        # print("Height: ", height)
         time.sleep(0.2)
 
 except KeyboardInterrupt:

@@ -17,6 +17,7 @@ LOW_BATTERY_THRESHOLD = 30
 FINDER_MAX_HIGHT = 70
 
 ERROR_THRESHOLD = 2  # cm
+
 # PID coefficients for X and Y
 KP_XY, KI_XY, KD_XY = .3, 0.00001, .1
 MAX_SPEED_XY = 25
@@ -159,7 +160,7 @@ def maintain_x_position(current_position_x, marker_size_in_image):
     x_derivative = x_error - x_last_error
 
     x_adjustment = int(KP_XY * x_error + KI_XY * x_integral + KD_XY * x_derivative)
-    x_adjustment = min(max(x_adjustment, -MAX_SPEED_XY), MAX_SPEED_XY)
+    x_adjustment = min(max(x_adjustment, - MAX_SPEED_XY), MAX_SPEED_XY)
 
     print(x_error)
 

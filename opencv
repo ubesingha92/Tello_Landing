@@ -1,2 +1,2 @@
-pip uninstall opencv-python opencv-contrib-python
-pip install opencv-contrib-python
+pip uninstall opencv-python opencv-contrib-python==4.7.0.72
+pip install opencv-contrib-python==4.7.0.72
