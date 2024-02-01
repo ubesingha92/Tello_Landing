@@ -3,6 +3,7 @@ import numpy as np
 from djitellopy import Tello
 import math
 import time
+from simple_pid import PID
 
 # Define frame size
 FRAME_SIZE = (320, 240)
@@ -16,35 +17,24 @@ MARKER_SIZE = 7.5  # cm
 # PID coefficients for X
 KP_X, KI_X, KD_X = 3, 0, 5
 MAX_SPEED_X = 15
-
-# Initialize global variables for X
-x_integral = 0
-x_last_error = 0
-x_derivative = 0
+pid_x = PID(KP_X, KI_X, KD_X, setpoint=0)
+pid_x.output_limits = (-MAX_SPEED_X, MAX_SPEED_X)
 
 # PID coefficients for Y
 KP_Y, KI_Y, KD_Y = 3, 0, 5
 MAX_SPEED_Y = 15
-
-# Initialize global variables for Y
-y_integral = 0
-y_last_error = 0
-y_derivative = 0
+pid_y = PID(KP_Y, KI_Y, KD_Y, setpoint=0)
+pid_y.output_limits = (-MAX_SPEED_Y, MAX_SPEED_Y)
 
 # PID coefficients for yaw
 KP_YAW, KI_YAW, KD_YAW = 4, 0.01, 1
 MAX_SPEED_YAW = 40
+pid_yaw = PID(KP_YAW, KI_YAW, KD_YAW, setpoint=0)
+pid_yaw.output_limits = (-MAX_SPEED_YAW, MAX_SPEED_YAW)
 
 XY_ACCEPT_RANGE = 3
 YAW_ACCEPT_RANGE = 3
-
-ok_counter = 0
 OK_COUNTER_LIMIT = 1
-
-# Initialize global variables
-yaw_integral = 0
-yaw_last_error = 0
-yaw_derivative = 0
 
 # Connect to Tello drone
 tello = Tello()
@@ -60,18 +50,13 @@ def load_calibration_data(path):
     return cam_mat, dist_coef
 
 def draw_detected_markers(frame, corners, ids, rvecs, tvecs):
-    # Global variables for XYZ and yaw PID controller
     global ok_counter
-    global x_integral, x_last_error, x_derivative
-    global y_integral, y_last_error, y_derivative
-    global z_integral, z_last_error, z_derivative
-    global yaw_integral, yaw_last_error, yaw_derivative
 
     # Convert degrees to radians
     roll = math.radians(tello.get_roll())
     pitch = math.radians(tello.get_pitch())
 
-    # distance height between the drone and the ArUco marker
+    # Distance height between the drone and the ArUco marker
     height = tello.get_distance_tof() * math.cos(roll) * math.cos(pitch)
 
     for i in range(len(ids)):
@@ -79,7 +64,7 @@ def draw_detected_markers(frame, corners, ids, rvecs, tvecs):
 
         x, y, _ = [int(round(item)) for sublist in tvecs[i] for item in sublist]  # Unpack and round tvecs[i]
 
-        # correction
+        # Correction
         x = -x + height * math.sin(roll)
         y = y - height * math.sin(pitch)
 
@@ -91,47 +76,22 @@ def draw_detected_markers(frame, corners, ids, rvecs, tvecs):
         euler_angles = [int(round(angle[0])) for angle in euler_angles]
         yaw_value = euler_angles[2]
 
-        # get Battery
+        # Get Battery
         battery_value = tello.get_battery()
 
-        # X-axis PID controller
-        x_error = x
-        x_integral += x_error
-        x_derivative = x_error - x_last_error
+        # PID Control
+        x_adjustment = int(pid_x(x))
+        y_adjustment = int(pid_y(y))
+        yaw_adjustment = int(pid_yaw(yaw_value))
 
-        x_adjustment = int(KP_X * x_error + KI_X * x_integral + KD_X * x_derivative)
-        x_adjustment = -min(max(x_adjustment, -MAX_SPEED_X), MAX_SPEED_X)
+        print (f"Battery: {battery_value} X: {x_adjustment} Y: {y_adjustment} Yaw: {yaw_adjustment}", end="")
 
-        x_last_error = x_error
-
-        # Y-axis PID controller
-        y_error = y
-        y_integral += y_error
-        y_derivative = y_error - y_last_error
-
-        y_adjustment = int(KP_Y * y_error + KI_Y * y_integral + KD_Y * y_derivative)
-        y_adjustment = -min(max(y_adjustment, -MAX_SPEED_Y), MAX_SPEED_Y)
-
-        y_last_error = y_error
-     
-        # yaw_value
-        yaw_error = yaw_value
-        yaw_integral += yaw_error
-        yaw_derivative = yaw_error - yaw_last_error
-
-        yaw_adjustment = int(KP_YAW * yaw_error + KI_YAW * yaw_integral + KD_YAW * yaw_derivative)
-        yaw_adjustment = min(max(yaw_adjustment, -MAX_SPEED_YAW), MAX_SPEED_YAW)
-
-        yaw_last_error = yaw_error
-
-        print (f"Battery: {battery_value} X: {x_adjustment} yaw: {yaw_adjustment}", end="")
-
-        # tello.send_rc_control(-x_adjustment, y_adjustment, z_adjustment, yaw_adjustment)
-        if -YAW_ACCEPT_RANGE > yaw_error or  yaw_error > YAW_ACCEPT_RANGE:
+        # Tello movement control based on PID adjustments
+        if -YAW_ACCEPT_RANGE > yaw_value or yaw_value > YAW_ACCEPT_RANGE:
             tello.send_rc_control(0, 0, 0, yaw_adjustment)
             print ("--Need Yaw Correction")
             ok_counter = 0
-        elif (-XY_ACCEPT_RANGE > x_error or  x_error > XY_ACCEPT_RANGE) and (-XY_ACCEPT_RANGE > y_error or  y_error > XY_ACCEPT_RANGE):
+        elif (-XY_ACCEPT_RANGE > x or x > XY_ACCEPT_RANGE) and (-XY_ACCEPT_RANGE > y or y > XY_ACCEPT_RANGE):
             tello.send_rc_control(x_adjustment, y_adjustment, 0, yaw_adjustment)
             print ("--Need XY Correction")
             ok_counter = 0
@@ -141,11 +101,8 @@ def draw_detected_markers(frame, corners, ids, rvecs, tvecs):
             ok_counter += 1
             if ok_counter >= OK_COUNTER_LIMIT:
                 tello.send_rc_control(x_adjustment, y_adjustment, -15, yaw_adjustment)
-                if( height<= 35):
+                if height <= 35:
                     tello.land()
-                    # time.sleep(5)
-                    # tello.takeoff()
-
 
 def process_frame(tello, frame_size):
     # Read frame from the drone
@@ -173,7 +130,7 @@ def main():
     tello.takeoff()
 
     while True:
-        time.sleep(.1)
+        time.sleep(0.2)
         frame = process_frame(tello, FRAME_SIZE)
 
         # Detect ArUco markers
@@ -184,17 +141,14 @@ def main():
             # Estimate pose of each marker
             try:
                 rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(corners, MARKER_SIZE, cam_mat, dist_coef)
-
             except Exception as e:
                 print(f"Error estimating marker pose: {e}")
 
             draw_detected_markers(frame, corners, ids, rvecs, tvecs)
         else:
-             # Convert degrees to radians
+            # Handle no markers detected
             roll = math.radians(tello.get_roll())
             pitch = math.radians(tello.get_pitch())
-
-            # distance height between the drone and the ArUco marker
             height = tello.get_distance_tof() * math.cos(roll) * math.cos(pitch)
             if height < 100:
                 tello.send_rc_control(0, 0, 10, 0)
