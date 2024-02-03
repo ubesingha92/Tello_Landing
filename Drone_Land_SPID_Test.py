@@ -18,31 +18,29 @@ calib_data_path = "Camera_Calibartion/calib.npz"
 MARKER_SIZE = 7.5  # cm
 
 # Define the sample time
-SAMPLE_TIME = 0.4  # seconds
+SAMPLE_TIME = 0.1  # seconds
 
 # PID coefficients for X
-# KP_X, KI_X, KD_X = 3, 0, 5
-KP_X, KI_X, KD_X = 0, 0, 0
-MAX_SPEED_X = 15
+KP_X, KI_X, KD_X = 3, 0, 3
+MAX_SPEED_X = 20
 pid_x = PID(KP_X, KI_X, KD_X, setpoint=0, sample_time = SAMPLE_TIME)
 pid_x.output_limits = (-MAX_SPEED_X, MAX_SPEED_X)
 
 # PID coefficients for Y
-# KP_Y, KI_Y, KD_Y = 3, 0, 5
-KP_Y, KI_Y, KD_Y = 0, 0, 0
-MAX_SPEED_Y = 15
+KP_Y, KI_Y, KD_Y = 3, 0, 3
+MAX_SPEED_Y = 20
 pid_y = PID(KP_Y, KI_Y, KD_Y, setpoint=0, sample_time = SAMPLE_TIME)
 pid_y.output_limits = (-MAX_SPEED_Y, MAX_SPEED_Y)
 
 # PID coefficients for yaw
-# KP_YAW, KI_YAW, KD_YAW = 4, 0.01, 1
-KP_YAW, KI_YAW, KD_YAW = 4, 0.01, 1
-MAX_SPEED_YAW = 15
+KP_YAW, KI_YAW, KD_YAW = 3, 0, 0
+MAX_SPEED_YAW = 100
 pid_yaw = PID(KP_YAW, KI_YAW, KD_YAW, setpoint=0, sample_time = SAMPLE_TIME)
 pid_yaw.output_limits = (-MAX_SPEED_YAW, MAX_SPEED_YAW)
 
-XY_ACCEPT_RANGE = 3
-YAW_ACCEPT_RANGE = 3
+XY_ACCEPT_RANGE = 5
+XY_ACCEPT_RANGE_LAND = 3
+YAW_ACCEPT_RANGE = 5
 
 # Connect to Tello drone
 tello = Tello()
@@ -50,6 +48,17 @@ tello.connect()
 
 filename_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 csv_filename = f'csv/aruco_marker_errors_{filename_time}.csv'
+
+MIN_CONTROL_THRESHOLD = 10
+
+def apply_control_threshold(value):
+    if value == 0:
+        return 0
+    elif value < 0:
+        return value - MIN_CONTROL_THRESHOLD
+    else:
+        return value + MIN_CONTROL_THRESHOLD
+
 
 def load_calibration_data(path):
     # Load calibration data
@@ -78,7 +87,7 @@ def write_error_to_csv(file_path, error_data):
         # Then write the actual data
         writer.writerow(error_data)
 
-def control_markers(frame, corners, ids, rvecs, tvecs, height, roll, pitch):
+def control_markers(frame, corners, ids, rvecs, tvecs, height, roll, pitch, battery_value):
 
     for i in range(len(ids)):
         cv2.aruco.drawDetectedMarkers(frame, corners)
@@ -86,8 +95,10 @@ def control_markers(frame, corners, ids, rvecs, tvecs, height, roll, pitch):
         x, y, _ = [int(round(item)) for sublist in tvecs[i] for item in sublist]  # Unpack and round tvecs[i]
 
         # Correction
-        error_x = -x + int(height * math.sin(roll))
-        error_y = y - int(height * math.sin(pitch))
+        # error_x = -x + int(height * math.sin(roll))
+        # error_y = y - int(height * math.sin(pitch))
+        error_x = -x 
+        error_y = y
 
         # Calculate Euler angles
         rotation_matrix, _ = cv2.Rodrigues(rvecs[i])
@@ -95,39 +106,37 @@ def control_markers(frame, corners, ids, rvecs, tvecs, height, roll, pitch):
 
         # Round angles and convert to integer (Roll, Pitch, Yaw)
         euler_angles = [int(round(angle[0])) for angle in euler_angles]
-        yaw_error = euler_angles[2]
-
-        # Get Battery
-        battery_value = tello.get_battery()
+        error_yaw = euler_angles[2]
 
         # PID Control
-        pid_val_x = int(pid_x(error_x))
-        pid_val_y = int(pid_y(error_y))
-        pid_val_z = 0
-        pid_val_yaw = int(pid_yaw(yaw_error))
+        pid_val_x = apply_control_threshold(int(pid_x(error_x)))
+        pid_val_y = apply_control_threshold(int(pid_y(error_y)))
 
-        print (f"Battery: {battery_value} X: {error_x} Y: {error_y} Yaw: {yaw_error} Height: {height}", end="")
+        pid_val_z = 0
+        pid_val_yaw = -int(pid_yaw(error_yaw))
+
+        # print (f"Battery: {battery_value} X: {error_x} Y: {error_y} Yaw: {error_yaw} Height: {height}", end="")
 
         # Tello movement control based on PID adjustments
-        if -YAW_ACCEPT_RANGE > yaw_error or yaw_error > YAW_ACCEPT_RANGE:
+        if -YAW_ACCEPT_RANGE > error_yaw or error_yaw > YAW_ACCEPT_RANGE:
+            print ("--Yaw Correction Only")
             pid_val_x = 0
             pid_val_y = 0
-            print ("--Need Yaw Correction")
 
         elif (-XY_ACCEPT_RANGE > error_x or error_x > XY_ACCEPT_RANGE) and (-XY_ACCEPT_RANGE > error_y or error_y > XY_ACCEPT_RANGE):
-            print ("--Need XY Correction")
-
+            print ("--XY and Yaw Correction")
+            
         else:
-            print ("--Ok")
+            print ("--Ok")            
             # tello.land()
 
         # Write errors to CSV
         human_readable_time = datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')
-        error_data = [human_readable_time, ids[i][0], error_x, error_y, yaw_error, height, pid_val_x, pid_val_y, pid_val_yaw]
+        error_data = [human_readable_time, ids[i][0], error_x, error_y, error_yaw, height, pid_val_x, pid_val_y, pid_val_yaw]
         write_error_to_csv(csv_filename, error_data)
 
         # RC Control
-        # tello.send_rc_control(pid_val_x, pid_val_y, pid_val_z, pid_val_yaw)
+        tello.send_rc_control(pid_val_x, pid_val_y, pid_val_z, pid_val_yaw)
 
 def process_frame(tello, frame_size):
     # Read frame from the drone
@@ -152,7 +161,8 @@ def main():
     tello.set_video_direction(1)
 
     # takeoff
-    # tello.takeoff()
+    tello.takeoff()
+    tello.send_rc_control(0, 0, 0, 0)
 
     while True:
         time.sleep(SAMPLE_TIME)
@@ -166,7 +176,16 @@ def main():
         pitch = math.radians(tello.get_pitch())
 
         # Distance height between the drone and the ArUco marker
-        height = int(tello.get_distance_tof() * math.cos(roll) * math.cos(pitch)) 
+        # height = int(tello.get_distance_tof() * math.cos(roll) * math.cos(pitch))
+        height = int(tello.get_distance_tof())
+
+        # Get Battery
+        battery_value = tello.get_battery()
+        print (f"Battery: {battery_value}", end="")
+
+        if(battery_value<30):
+            tello.land()
+            break
 
         # If any markers are detected
         if ids is not None:
@@ -176,18 +195,22 @@ def main():
             except Exception as e:
                 print(f"Error estimating marker pose: {e}")
 
-            control_markers(frame, corners, ids, rvecs, tvecs, height, roll, pitch)
+            control_markers(frame, corners, ids, rvecs, tvecs, height, roll, pitch, battery_value)
         else:
             # Handle no markers detected
+            print ("No Markers")
             if height < 150:
-                tello.send_rc_control(0, 0, 10, 0)
+                
+                tello.send_rc_control(0, 0, 15, 0)
             else:
-                tello.land()
+                tello.send_rc_control(0, 0, 0, 0)
+                # tello.land()
 
         cv2.imshow("frame", frame)
 
         # If 'q' is pressed, exit the loop
         if cv2.waitKey(10) & 0xFF == ord('q'):
+            tello.land()
             break
 
     tello.streamoff()
