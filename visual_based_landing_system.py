@@ -104,8 +104,6 @@ def control_markers(frame, corners, ids, rvecs, tvecs, height, roll, pitch):
         x, y, _ = [int(round(item)) for sublist in tvecs[i] for item in sublist]  # Unpack and round tvecs[i]
 
         # Correction
-        # error_x = -x + int(height * math.sin(roll))
-        # error_y = y - int(height * math.sin(pitch))
         error_x = -x 
         error_y = y
 
@@ -199,7 +197,6 @@ def main():
         pitch = math.radians(tello.get_pitch())
 
         # Distance height between the drone and the ArUco marker
-        # height = int(tello.get_distance_tof() * math.cos(roll) * math.cos(pitch))
         height = int(tello.get_distance_tof())
 
         # Get Battery
